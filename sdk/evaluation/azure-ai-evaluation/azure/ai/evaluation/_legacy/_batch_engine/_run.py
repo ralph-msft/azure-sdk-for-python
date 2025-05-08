@@ -13,22 +13,12 @@ from ._status import BatchStatus
 
 
 class RunStatus(Enum):
-    # TODO ralphe: Trim this to just the statuses we need
-    # QUEUED = "Queued"
     NOT_STARTED = "NotStarted"
     PREPARING = "Preparing"
-    # PROVISIONING = "Provisioning"
-    # STARTING = "Starting"
     RUNNING = "Running"
-    # CANCEL_REQUESTED = "CancelRequested"
     CANCELED = "Canceled"
-    # FINALIZING = "Finalizing"
     COMPLETED = "Completed"
     FAILED = "Failed"
-    # UNAPPROVED = "Unapproved"
-    # NOTRESPONDING = "NotResponding"
-    # PAUSING = "Pausing"
-    # PAUSED = "Paused"
 
     @staticmethod
     def from_batch_result_status(status: BatchStatus) -> "RunStatus":
@@ -42,7 +32,6 @@ class RunStatus(Enum):
             return RunStatus.CANCELED
         if status == BatchStatus.Failed:
             return RunStatus.FAILED
-
         return RunStatus.FAILED
 
 

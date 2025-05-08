@@ -3,7 +3,7 @@
 # ---------------------------------------------------------
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Mapping, Optional, Sequence
 
 from ._status import BatchStatus
@@ -103,3 +103,17 @@ class BatchResult:
         if not self.details:
             return []
         return [d.result for d in self.details]
+
+    @staticmethod
+    def from_exception(exception: Exception, start_time: datetime, total_lines: int) -> "BatchResult":
+        """Create a BatchResult from an exception."""
+        return BatchResult(
+            status=BatchStatus.Failed,
+            total_lines=total_lines,
+            failed_lines=total_lines,
+            start_time=start_time,
+            end_time=datetime.now(timezone.utc),
+            tokens=TokenMetrics(0, 0, 0),
+            details=[],
+            error=exception,
+        )

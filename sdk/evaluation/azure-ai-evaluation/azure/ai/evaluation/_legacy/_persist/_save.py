@@ -169,7 +169,6 @@ def load_evaluator(path: Union[str, PathLike], **kwargs: Any) -> LoadedEvaluator
     if not path.exists():
         raise EvaluationLoadError(f"Path '{path}' does not exist.")
 
-    # TODO ralphe: Support prompty files as well?
     if path.is_file():
         if path.name != YAML_FILE_NAME:
             raise EvaluationLoadError(f"Path '{path}' is not a valid flow flex file.")
@@ -192,6 +191,5 @@ def load_evaluator(path: Union[str, PathLike], **kwargs: Any) -> LoadedEvaluator
     # Quick validation checks of loaded metadata
     if "entry" not in meta or not isinstance(meta["entry"], str):
         raise EvaluationLoadError("Missing or invalid 'entry' in flow flex file.")
-    # TODO ralphe: More validation checks of inputs, outputs, or init args?
 
     return LoadedEvaluator(meta, path.parent, **kwargs)

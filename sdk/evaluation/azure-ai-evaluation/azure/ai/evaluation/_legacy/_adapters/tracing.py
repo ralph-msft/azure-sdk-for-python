@@ -19,7 +19,9 @@ except ImportError:
         inject_openai_api as _inject,
         recover_openai_api as _recover,
     )
-    from azure.ai.evaluation._legacy._batch_engine._trace import start_trace as _start_trace
+    def _start_trace(*args, **kwargs) -> None:
+        """No-op function for starting trace."""
+        pass
 
 
 ThreadPoolExecutorWithContext: TypeAlias = _ThreadPoolExecutorWithContext

@@ -168,8 +168,6 @@ def _resolve_reference(reference: str, base_path: Optional[Path] = None) -> Unio
                     return load_yaml(f)
                 return f.read()
 
-        # TODO ralphe: logging?
-        # logger.warning(f"Unknown reference type {reference_type}, return original value {reference}.")
         return reference
 
     return reference
@@ -365,9 +363,6 @@ def _inline_image(image: str, working_dir: Path, image_detail: str) -> Dict[str,
         if not path.is_absolute():
             path = working_dir / local_file
         if not path.exists():
-            # TODO ralphe logging?
-            # logger.warning(f"Cannot find the image path {image_content},
-            #                  it will be regarded as {type(image_str)}.")
             raise InvalidInputError(f"Cannot find the image path '{path.as_posix()}'")
 
         base64_encoded = base64.b64encode(path.read_bytes()).decode("utf-8")
@@ -417,7 +412,6 @@ def _inline_image(image: str, working_dir: Path, image_detail: str) -> Dict[str,
 def _try_parse_name_and_content(role_prompt: str) -> Optional[Tuple[str, str]]:
     # customer can add ## in front of name/content for markdown highlight.
     # and we still support name/content without ## prefix for backward compatibility.
-    # TODO ralphe: This maybe has something to do with parsing functions or tool calls but I'm not sure
     pattern = r"\n*#{0,2}\s*name\s*:\s*\n+\s*(\S+)\s*\n*#{0,2}\s*content\s*:\s*\n?(.*)"
     match = re.search(pattern, role_prompt, re.DOTALL)
     if match:

@@ -271,8 +271,6 @@ class BatchEngine:
             # wait for any task to complete
             done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
             completed_line_results = [task.result() for task in done]
-            # persist node run infos and flow run info in line result to storage
-            self._persist_run_info([result for _, result in completed_line_results])
             results.update({index: result for index, result in completed_line_results})
             # update the progress log
             completed_lines += len(completed_line_results)
@@ -339,10 +337,6 @@ class BatchEngine:
                 details.end_time = datetime.now(timezone.utc)
 
         return index, details
-
-    def _persist_run_info(self, line_results: Sequence[BatchRunDetails]):
-        # TODO ralphe: implement?
-        pass
 
     def _batch_timeout_expired(self, start_time: datetime) -> bool:
         if self._batch_timeout_sec is None:

@@ -2,6 +2,10 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # ---------------------------------------------------------
 
+# NOTE: Based on the legacy code from:
+# promptflow-devkit/promptflow/_sdk/_orchestrator/run_submitter.py
+# This will be refactored/removed in a future code update.
+
 import dataclasses
 import inspect
 import sys
@@ -11,19 +15,16 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, TextIO, Union
 
 from ._run import Run, RunStatus
-from ._trace import start_trace
+from .._adapters.tracing import start_trace
 from ._run_storage import AbstractRunStorage, NoOpRunStorage
 from .._common._logging import incremental_print, print_red_error
 from ._config import BatchEngineConfig
 from ._exceptions import BatchEngineValidationError
-from ._engine import DEFAULTS_KEY, BatchEngine, BatchEngineError, BatchResult
+from ._engine import DEFAULTS_KEY, BatchEngine, BatchEngineError, BatchResult, BatchStatus
 
 
 class RunSubmitter:
-    """Submits run to executor
-    promptflow-devkit/promptflow/_sdk/_orchestrator/run_submitter.py
-
-    THIS WILL BE REMOVED IN A FUTURE CODE UPDATE"""
+    """Submits run to executor"""
 
     def __init__(self, config: BatchEngineConfig, executor: Optional[Executor] = None):
         # TODO ralphe: Use proper logger here. Old code did LoggerFactory.get_logger(__name__)
@@ -144,18 +145,25 @@ class RunSubmitter:
                 logger.warning("\n".join(error_logs))
         except Exception as e:
             run._status = RunStatus.FAILED
-            # when run failed in executor, store the exception in result and dump to file
             logger.warning(f"Run {run.name} failed when executing in executor with exception {e}.")
+            if batch_result is None:
+                batch_result = BatchResult.from_exception(
+                    e,
+                    run._start_time,
+                    len(run.inputs) if run.inputs is not None else 0)
+            else:
+                # TODO ralphe: How should we handle if there is already a batch result exception?
+                batch_result.status = BatchStatus.Failed
+                batch_result.error = e
             # for user error, swallow stack trace and return failed run since user don't need the stack trace
             if not isinstance(e, BatchEngineValidationError):
                 # for other errors, raise it to user to help debug root cause.
                 raise e
             # won't raise the exception since it's already included in run object.
         finally:
-            # persist inputs, outputs and metrics
+            # persist inputs, outputs, and exceptions to storage
             local_storage.persist_result(batch_result)
-            # exceptions
-            # local_storage.dump_exception(exception=exception, batch_result=batch_result) # TODO ralphe: persist_result should handle this
+
             # system metrics
             system_metrics = {}
             if batch_result:
