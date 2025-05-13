@@ -4,7 +4,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any, Dict, Mapping, Optional, Sequence
 
 from ._status import BatchStatus
 
@@ -55,6 +55,8 @@ class BatchRunDetails:
     """The token metrics of the line run."""
     error: Optional[BatchRunError]
     """The error of the line run. This will only be set if the status is Failed."""
+    logs: str = ""
+    """The logs of the line run"""
 
     @property
     def duration(self) -> timedelta:
@@ -67,6 +69,23 @@ class BatchRunDetails:
     def create_id(run_id: str, index: int) -> str:
         """Helper method to create the ID for a line run."""
         return f"{run_id}_{index}"
+
+    def as_summary_dict(self) -> Mapping[str, Any]:
+        """Get the summary of the line run."""
+        ret: Dict[str, Any] = {
+            "id": self.id,
+            "status": self.status.name,
+            "duration": str(self.duration),
+            "logs": [log for log in self.logs.split("\n") if log],
+        }
+
+        if self.error:
+            ret["error"] = {
+                "details": self.error.details,
+                "exception": str(self.error.exception) if self.error.exception else None,
+            }
+
+        return ret
 
 
 @dataclass
@@ -117,3 +136,17 @@ class BatchResult:
             details=[],
             error=exception,
         )
+
+    def as_error_dict(self) -> Mapping[str, Any]:
+        """Get a summary of the batch result errors."""
+        return {
+            "status": self.status.name,
+            "start_time": str(self.start_time),
+            "end_time": str(self.end_time),
+            "error": str(self.error) if self.error else None,
+            "details": [
+                detail.as_summary_dict()
+                for detail in self.details
+                if detail and BatchStatus.is_failed(detail.status) 
+            ]
+        }

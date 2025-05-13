@@ -834,6 +834,7 @@ def _evaluate(  # pylint: disable=too-many-locals,too-many-statements
         output_path=output_path,
         azure_ai_project=azure_ai_project,
         evaluation_name=evaluation_name,
+        fail_on_evaluator_errors=fail_on_evaluator_errors,
         **kwargs,
     )
     
@@ -945,6 +946,7 @@ def _preprocess_data(
     output_path: Optional[Union[str, os.PathLike]] = None,
     azure_ai_project: Optional[Union[str, AzureAIProject]] = None,
     evaluation_name: Optional[str] = None,
+    fail_on_evaluator_errors: bool = False,
     **kwargs,
     ) -> __ValidatedData:
     # Process evaluator config to replace ${target.} with ${data.}
@@ -995,7 +997,7 @@ def _preprocess_data(
     batch_run_data: Union[str, os.PathLike, pd.DataFrame] = data
 
     if kwargs.pop("_use_run_submitter_client", False):
-        batch_run_client = RunSubmitterClient()
+        batch_run_client = RunSubmitterClient(raise_on_errors=fail_on_evaluator_errors)
         batch_run_data = input_data_df
     elif kwargs.pop("_use_pf_client", True):
         batch_run_client = ProxyClient(user_agent=USER_AGENT)

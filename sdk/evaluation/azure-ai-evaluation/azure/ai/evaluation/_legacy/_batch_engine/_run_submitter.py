@@ -9,6 +9,7 @@
 import dataclasses
 import inspect
 import sys
+import traceback
 
 from concurrent.futures import Executor
 from datetime import datetime, timezone
@@ -81,7 +82,7 @@ class RunSubmitter:
             # unnecessary Flow loading code was removed here. Instead do direct calls to _submit_bulk_run
             await self._submit_bulk_run(run=run, local_storage=local_storage, **kwargs)
 
-        self.stream_run(run=run, storage=local_storage, raise_on_error=True)
+        self.stream_run(run=run, storage=local_storage, raise_on_error=self._config.raise_on_error)
         return run
 
     async def _submit_bulk_run(self, run: Run, local_storage: AbstractRunStorage, **kwargs) -> None:
@@ -125,10 +126,8 @@ class RunSubmitter:
         try:
             batch_engine = BatchEngine(
                 run.dynamic_callable,
+                config=self._config,
                 storage=local_storage,
-                batch_timeout_sec=self._config.batch_timeout_seconds,
-                line_timeout_sec=self._config.run_timeout_seconds,
-                max_worker_count=self._config.max_concurrency,
                 executor=self._executor,
             )
 
@@ -230,6 +229,7 @@ class RunSubmitter:
             return
 
         file_handler = sys.stdout
+        error_message: Optional[str] = None
         try:
             printed = 0
             available_logs = storage.logger.get_logs()
@@ -241,7 +241,24 @@ class RunSubmitter:
 
         if run.status == RunStatus.FAILED or run.status == RunStatus.CANCELED:
             if run.status == RunStatus.FAILED:
-                error_message = storage.load_exception().get("message", "Run fails with unknown error.")
+                # Get the first error message from the results, or use a default one
+                if run.result and run.result.error:
+                    error_message = ''.join(
+                        traceback.format_exception(
+                            type(run.result.error), run.result.error, run.result.error.__traceback__
+                        )
+                    )
+                elif run.result and run.result.details:
+                    err = next((r.error for r in run.result.details if r.error), None)
+                    if err and err.exception:
+                        error_message = ''.join(
+                            traceback.format_exception(type(err.exception), err.exception, err.exception.__traceback__)
+                        )
+                    elif err and err.details:
+                        error_message = err.details
+
+                if not error_message:
+                    error_message = "Run fails with unknown error."
             else:
                 error_message = "Run is canceled."
             if raise_on_error:

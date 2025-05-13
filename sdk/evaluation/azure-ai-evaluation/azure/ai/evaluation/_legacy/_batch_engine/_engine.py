@@ -23,11 +23,13 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Final, Generator, Mapping, MutableMapping, Optional, Sequence, Set, Tuple, cast
 from uuid import uuid4
 
-from ._utils import DEFAULTS_KEY, get_int_env_var, get_value_from_path, is_async_callable
+from ._config import BatchEngineConfig
+from ._utils import DEFAULTS_KEY, get_value_from_path, is_async_callable
 from ._status import BatchStatus
 from ._result import BatchResult, BatchRunDetails, BatchRunError, TokenMetrics
 from ._run_storage import AbstractRunStorage, NoOpRunStorage
-from .._common._logging import log_progress, NodeLogManager
+from .._common._logging import log_progress
+from .._common._log_context import CaptureLogsContext
 from ..._exceptions import ErrorBlame
 from ._exceptions import (
     BatchEngineCanceledError,
@@ -36,14 +38,10 @@ from ._exceptions import (
     BatchEngineTimeoutError,
     BatchEngineValidationError,
 )
-from ._utils_deprecated import (
-    async_run_allowing_running_loop,
-    convert_eager_flow_output_to_dict,
-)
+from ._utils_deprecated import convert_eager_flow_output_to_dict
 from ._openai_injector import CaptureOpenAITokenUsage
 
 
-MAX_WORKER_COUNT: Final[int] = 10
 KEYWORD_PATTERN: Final = re.compile(r"^\${([^{}]+)}$")
 
 
@@ -54,30 +52,25 @@ class BatchEngine:
         self,
         func: Callable,
         *,
+        config: BatchEngineConfig,
         storage: Optional[AbstractRunStorage] = None,
-        batch_timeout_sec: Optional[int] = None,
-        line_timeout_sec: Optional[int] = None,
-        max_worker_count: Optional[int] = None,
         executor: Optional[Executor] = None,
     ):
         """Create a new batch engine instance
 
         :param Callable func: The function to run the flow
+        :param BatchEngineConfig config: The configuration for the batch engine
         :param Optional[AbstractRunStorage] storage: The storage to store execution results
-        :param Optional[int] batch_timeout_sec: The timeout of batch run in seconds
-        :param Optional[int] line_timeout_sec: The timeout of each line in seconds
-        :param Optional[int] max_worker_count: The concurrency limit of batch run
         :param Optional[Executor] executor: The executor to run the flow (if needed)
         """
 
         self._func: Callable = func
+        self._config: BatchEngineConfig = config
         self._storage: AbstractRunStorage = storage or NoOpRunStorage()
 
-        # TODO ralphe: Consume these from the batch context/config instead of from
-        #              kwargs or (even worse) environment variables
-        self._batch_timeout_sec = batch_timeout_sec or get_int_env_var("PF_BATCH_TIMEOUT_SEC")
-        self._line_timeout_sec = line_timeout_sec or get_int_env_var("PF_LINE_TIMEOUT_SEC", 600)
-        self._max_worker_count = max_worker_count or get_int_env_var("PF_WORKER_COUNT") or MAX_WORKER_COUNT
+        self._batch_timeout_sec = self._config.batch_timeout_seconds
+        self._line_timeout_sec = self._config.line_timeout_seconds
+        self._max_worker_count = self._config.max_concurrency
 
         self._executor: Optional[Executor] = executor
         self._is_canceled: bool = False
@@ -287,7 +280,7 @@ class BatchEngine:
         inputs: Mapping[str, Any],
         index: int,
     ) -> Tuple[int, BatchRunDetails]:
-        with self._exec_line_context(run_id, index):
+        with CaptureLogsContext(run_id=run_id, log_entry=index) as log_context:
             details: BatchRunDetails = BatchRunDetails(
                 id=f"{run_id}_{index}",
                 status=BatchStatus.NotStarted,
@@ -335,6 +328,7 @@ class BatchEngine:
                 )
             finally:
                 details.end_time = datetime.now(timezone.utc)
+                details.logs = log_context.get_captured_logs()
 
         return index, details
 
@@ -342,40 +336,3 @@ class BatchEngine:
         if self._batch_timeout_sec is None:
             return False
         return (datetime.now(timezone.utc) - start_time).total_seconds() > self._batch_timeout_sec
-
-    @contextmanager
-    def _exec_line_context(self, run_id: str, line_number: int) -> Generator[None, Any, None]:
-        # TODO ralphe: Do proper tracing and logging here
-        log_manager = NodeLogManager()
-        log_manager.set_node_context(run_id, "Flex", line_number)
-        with log_manager, self._update_operation_context(run_id, line_number):
-            yield
-
-    @contextmanager
-    def _update_operation_context(self, run_id: str, line_number: int) -> Generator[None, Any, None]:
-        # operation_context = OperationContext.get_instance()
-        # original_context = operation_context.copy()
-        # original_mode = operation_context.get("run_mode", RunMode.Test.name)
-        # values_for_context = {"flow_id": self._flow_id, "root_run_id": run_id}
-        # if original_mode == RunMode.Batch.name:
-        #     values_for_otel = {
-        #         "batch_run_id": run_id,
-        #         "line_number": line_number,
-        #     }
-        # else:
-        #     values_for_otel = {"line_run_id": run_id}
-        # try:
-        #     append_promptflow_package_ua(operation_context)
-        #     operation_context.set_execution_target(execution_target=self._execution_target)
-        #     operation_context.set_default_tracing_keys(DEFAULT_TRACING_KEYS)
-        #     operation_context.run_mode = original_mode
-        #     operation_context.update(values_for_context)
-        #     for k, v in values_for_otel.items():
-        #         operation_context._add_otel_attributes(k, v)
-        #     # Inject OpenAI API to make sure traces and headers injection works and
-        #     # update OpenAI API configs from environment variables.
-        #     inject_openai_api()
-        yield
-
-        # finally:
-        #     OperationContext.set_instance(original_context)

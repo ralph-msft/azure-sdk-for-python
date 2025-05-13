@@ -17,14 +17,30 @@ from ..._legacy._batch_engine._config import BatchEngineConfig
 from ..._legacy._batch_engine._run import Run
 from ..._legacy._adapters._constants import LINE_NUMBER
 from ..._legacy._common._thread_pool_executor_with_context import ThreadPoolExecutorWithContext
+from ..._constants import PF_BATCH_TIMEOUT_SEC
+from .._utils import get_int_env_var as get_int
 
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = logging.getLogger("run")
+MISSING_VALUE: Final[int] = sys.maxsize
 
 
 class RunSubmitterClient:
-    def __init__(self, config: Optional[BatchEngineConfig] = None) -> None:
-        self._config = config or BatchEngineConfig(LOGGER, use_async=True)
+    def __init__(self, *, raise_on_errors: bool = False, config: Optional[BatchEngineConfig] = None) -> None:
+        if config:
+            self._config = config
+        else:
+            # Generate default config and apply any overrides to the configuration from environment variables
+            self._config = BatchEngineConfig(LOGGER, use_async=True)
+            if (val := get_int(PF_BATCH_TIMEOUT_SEC, MISSING_VALUE)) != MISSING_VALUE:
+                self._config.batch_timeout_seconds = val
+            if (val := get_int("PF_LINE_TIMEOUT_SEC", MISSING_VALUE)) != MISSING_VALUE:
+                self._config.line_timeout_seconds = val
+            if (val := get_int("PF_WORKER_COUNT", MISSING_VALUE)) != MISSING_VALUE:
+                self._config.max_concurrency = val
+
+        self._config.raise_on_error = raise_on_errors
+
         self._thread_pool = ThreadPoolExecutorWithContext(
             thread_name_prefix="evaluators_thread",
             max_workers=self._config.max_concurrency)
@@ -105,13 +121,18 @@ class RunSubmitterClient:
         total_lines = run.result.total_lines if run.result else 0
         failed_lines = run.result.failed_lines if run.result else 0
 
-        return {
+        ret: Dict[str, Any] = {
             "status": run.status.value,
             "duration": str(run.duration),
             "completed_lines": total_lines - failed_lines,
             "failed_lines": failed_lines,
-            # "log_path": "",
         }
+
+        # add details for the failures
+        if failed_lines > 0:
+            ret["details"] = run.result.as_error_dict() if run.result else {}
+
+        return ret
 
     @staticmethod
     def _get_run(run: BatchClientRun) -> Run:

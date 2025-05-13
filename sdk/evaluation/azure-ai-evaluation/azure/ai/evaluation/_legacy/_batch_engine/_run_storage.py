@@ -57,34 +57,6 @@ class AbstractRunStorage(ABC):
         """
         ...
 
-    @abstractmethod
-    def load_exception(self) -> Mapping[str, Any]:
-        """Load the exception from the storage. If there was no exception, an empty
-        mapping will be returned.
-
-        :return: The exception.
-        :rtype: Optional[Exception]
-        """
-        ...
-
-    @abstractmethod
-    def load_inputs_and_outputs(self) -> Tuple[Mapping[str, Any], BatchResult]:
-        """Load the inputs and outputs from the storage.
-
-        :return: The inputs and outputs.
-        :rtype: Tuple(Mapping[str, Any], BatchResult)
-        """
-        ...
-
-    @abstractmethod
-    def load_metrics(self) -> Mapping[str, Union[int, float, str]]:
-        """Load the metrics from the storage.
-
-        :return: The metrics.
-        :rtype: Mapping[str, Union[int, float, str]]
-        """
-        ...
-
 
 class NoOpRunStorage(AbstractRunStorage):
     """A no-op implementation of the run storage."""
@@ -99,16 +71,6 @@ class NoOpRunStorage(AbstractRunStorage):
 
     def persist_result(self, result: Optional[BatchResult]) -> None:
         pass
-
-    def load_exception(self) -> Mapping[str, Any]:
-        return {}
-
-    def load_inputs_and_outputs(self) -> Tuple[Mapping[str, Any], BatchResult]:
-        now = datetime.now(timezone.utc)
-        return {}, BatchResult(BatchStatus.NotStarted, 0, 0, now, now, TokenMetrics(0, 0, 0), [])
-
-    def load_metrics(self) -> Mapping[str, Union[int, float, str]]:
-        return {}
 
 
 class NoOpLogger(AbstractRunLogger):

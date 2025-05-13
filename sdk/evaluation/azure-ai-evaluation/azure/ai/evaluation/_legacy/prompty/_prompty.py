@@ -136,7 +136,6 @@ class AsyncPrompty:
         self,
         path: Union[str, PathLike],
         *,
-        logger: Optional[Logger] = None,
         token_credential: Optional[Union[TokenCredential, AsyncTokenCredential]] = None,
         is_reasoning_model: bool = False,
         **kwargs: Any,
@@ -167,7 +166,6 @@ class AsyncPrompty:
         self._inputs: Dict[str, Any] = configs.get("inputs", {})
         self._outputs: Dict[str, Any] = configs.get("outputs", {})
         self._name: str = configs.get("name", path.stem)
-        self._logger = logger or get_logger(__name__)
         self._token_credential: Union[TokenCredential, AsyncTokenCredential] = \
             token_credential or AsyncAzureTokenProvider()
 
@@ -264,6 +262,8 @@ class AsyncPrompty:
 
     async def __call__(  # pylint: disable=docstring-keyword-should-match-keyword-only
         self,
+        *,
+        logger: Optional[Logger] = None,
         **kwargs: Any,
     ) -> Union[OpenAIChatResponseType, AsyncGenerator[str, None], str, Mapping[str, Any]]:
         """Calling prompty as a function in async, the inputs should be provided with key word arguments.
@@ -276,6 +276,9 @@ class AsyncPrompty:
         :return: The output of the prompty.
         :rtype: ChatCompletion | AsyncStream[ChatCompletionChunk] | AsyncGenerator[str] | str | Mapping[str, Any]
         """
+
+        if logger is None:
+            logger = get_logger(type(self).__name__)
 
         inputs = self._resolve_inputs(kwargs)
         connection = Connection.parse_from_config(self._model.configuration)
@@ -318,6 +321,7 @@ class AsyncPrompty:
             api_client=api_client,
             params=params,
             timeout=timeout,
+            logger=logger,
         )
 
         return await format_llm_response(
@@ -347,6 +351,7 @@ class AsyncPrompty:
         api_client: Union[AsyncAzureOpenAI, AsyncOpenAI],
         params: Mapping[str, Any],
         timeout: Optional[float],
+        logger: Logger,
         max_retries: int = 10,
         max_entity_retries: int = 3,
     ) -> OpenAIChatResponseType:
@@ -374,33 +379,40 @@ class AsyncPrompty:
                 if delay:
                     await asyncio.sleep(delay)
 
+                logger.info("[%d/%d] %s: Sending request", retry, max_retries, client_name)
                 response = await client.chat.completions.create(**params)
+                logger.info("[%d/%d] %s: Response received", retry, max_retries, client_name)
                 return response
             except OpenAIError as error:
+                logger.warning(
+                    "[%d/%d] %s: Request failed. %s: %s.",
+                    retry,
+                    max_retries,
+                    client_name,
+                    type(error).__name__,
+                    str(error),
+                    exc_info=True,
+                )
+
                 if retry >= max_retries:
                     should_retry = False
                 else:
                     should_retry, delay = openai_error_retryable(error, retry, entity_retries, max_entity_retries)
 
                 if should_retry:
-                    self._logger.warning(
-                        "[%d/%d] %s request failed. %s: %s. Retrying in %f seconds.",
+                    logger.error(
+                        "[%d/%d] %s: Retrying in %f seconds",
                         retry,
                         max_retries,
                         client_name,
-                        type(error).__name__,
-                        str(error),
-                        delay or 0.0,
-                        exc_info=True,
+                        delay or 0.0
                     )
                 else:
-                    self._logger.exception(
-                        "[%d/%d] %s request failed. %s: %s",
+                    logger.error(
+                        "[%d/%d] %s: Cannot retry the current error.",
                         retry,
                         max_retries,
                         client_name,
-                        type(error).__name__,
-                        str(error),
                     )
                     raise WrappedOpenAIError(error=error) from error
 

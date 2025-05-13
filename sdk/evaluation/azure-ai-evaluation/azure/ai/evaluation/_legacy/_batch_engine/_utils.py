@@ -26,23 +26,6 @@ def normalize_identifier_name(name: str) -> str:
     return normalized
 
 
-def get_int_env_var(env_var_name: str, default_value: int = 0) -> int:
-    """Get the integer value of the environment variable.
-
-    Args:
-        env_var_name (str): The name of the environment variable.
-        default_value (int): The default value if the environment variable is not set.
-
-    Returns:
-        int: The integer value of the environment variable.
-    """
-    try:
-        value = os.getenv(env_var_name, default_value)
-        return int(value)
-    except ValueError:
-        return default_value
-
-
 def get_value_from_path(path: str, data: Mapping[str, Any]) -> Tuple[bool, Any]:
     """Tried to get a value from a mapping based on the specified path. The path is a
     string with dot-separated keys (e.g. data.nested_1.nested_2).
